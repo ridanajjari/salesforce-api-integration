@@ -99,5 +99,5 @@ WeatherService.fetchAndSaveWeather('YOUR_ACCOUNT_ID', 'Paris', 'YOUR_API_KEY');
 
 ## Author
 
-Built by [Your Name] — Salesforce Developer & Administrator  
-[LinkedIn](#) · [Trailhead](#)
+Built by NAJJARI RIDA — Salesforce Developer & Administrator  
+
