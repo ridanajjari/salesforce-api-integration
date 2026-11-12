@@ -13,7 +13,7 @@
         <enabled>true</enabled>
     </classAccesses>
     <description
-  >Lets a user run the OpenWeatherMap integration: Apex class access, edit access to Account.Weather_Info__c, and access to the OpenWeatherMap External Credential named principal used by the callout.</description>
+  >Lets a user run the OpenWeatherMap integration: Apex class access, edit access to Account.Weather_Info__c, and access to the OpenWeatherMap External Credential principal that the Named Credential callout requires.</description>
     <externalCredentialPrincipalAccesses>
         <enabled>true</enabled>
         <externalCredentialPrincipal

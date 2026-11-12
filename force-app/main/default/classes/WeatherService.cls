@@ -3,13 +3,15 @@
  * on the Account record as a custom text field (Weather_Info__c).
  *
  * API key handling:
- *   The key is stored in the OpenWeatherMap External Credential (named
- *   principal "OpenWeatherMapKey", authentication parameter "apiKey") and is
- *   entered in Setup, never in code or source control. OpenWeatherMap expects
- *   the key as the "appid" query parameter, so the request URL references it
- *   through the merge field {!$Credential.OpenWeatherMap.apiKey}; the platform
- *   substitutes the value when the callout is sent via the OpenWeatherMap
- *   Named Credential. Apex never sees the key.
+ *   OpenWeatherMap only accepts the key as the "appid" query parameter.
+ *   Salesforce rejects {!$Credential...} merge fields in a callout URL
+ *   (verified in a Developer Edition org at API 68.0), so the key cannot be
+ *   injected by the External Credential. Instead it is stored in the
+ *   protected hierarchy custom setting OpenWeatherMap_Settings__c.API_Key__c,
+ *   entered in Setup and never in code or source control. Apex reads it at
+ *   callout time and never logs it or the request URL. The callout still goes
+ *   through the OpenWeatherMap Named Credential, so the host is configured in
+ *   Setup and needs no Remote Site Setting.
  *
  * Integration pattern:
  *   1. Caller provides Account Id + city name
@@ -22,9 +24,9 @@ public with sharing class WeatherService {
   @TestVisible
   private static final String ENDPOINT_BASE = 'callout:OpenWeatherMap/data/2.5/weather';
 
-  // Resolved by the platform at callout time; the key itself is never in Apex.
+  // Set by tests so they do not depend on org data.
   @TestVisible
-  private static final String API_KEY_MERGE_FIELD = '{!$Credential.OpenWeatherMap.apiKey}';
+  private static String apiKeyOverride;
 
   @TestVisible
   private static final Integer TIMEOUT_MS = 10000;
@@ -147,7 +149,21 @@ public with sharing class WeatherService {
       EncodingUtil.urlEncode(city, 'UTF-8') +
       '&units=metric' +
       '&appid=' +
-      API_KEY_MERGE_FIELD;
+      EncodingUtil.urlEncode(getApiKey(), 'UTF-8');
+  }
+
+  private static String getApiKey() {
+    String key = apiKeyOverride;
+    if (key == null) {
+      OpenWeatherMap_Settings__c settings = OpenWeatherMap_Settings__c.getInstance();
+      key = settings == null ? null : settings.API_Key__c;
+    }
+    if (String.isBlank(key)) {
+      throw new WeatherServiceException(
+        'OpenWeatherMap API key is not configured (OpenWeatherMap_Settings__c.API_Key__c)'
+      );
+    }
+    return key.trim();
   }
 
   @TestVisible
