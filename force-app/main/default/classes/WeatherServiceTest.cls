@@ -210,20 +210,27 @@ private class WeatherServiceTest {
 
   @IsTest
   static void fetchAndSaveUpdatesAccount() {
-    Test.setMock(HttpCalloutMock.class, new WeatherCalloutMock());
+    User integrationUser = WeatherTestAccess.createIntegrationUser();
+    System.runAs(integrationUser) {
+      Test.setMock(HttpCalloutMock.class, new WeatherCalloutMock());
 
-    Account acc = new Account(Name = 'Acme France');
-    insert acc;
+      Account acc = new Account(Name = 'Acme France');
+      insert acc;
 
-    Test.startTest();
-    WeatherService.fetchAndSaveWeather(acc.Id, 'Paris');
-    Test.stopTest();
+      Test.startTest();
+      WeatherService.fetchAndSaveWeather(acc.Id, 'Paris');
+      Test.stopTest();
 
-    Account updated = [SELECT Weather_Info__c FROM Account WHERE Id = :acc.Id];
-    Assert.areEqual(
-      'Paris, FR | 18.5°C | light rain | Humidity: 72% | Wind: 4.2 m/s',
-      updated.Weather_Info__c,
-      'Account should hold the formatted summary'
-    );
+      Account updated = [
+        SELECT Weather_Info__c
+        FROM Account
+        WHERE Id = :acc.Id
+      ];
+      Assert.areEqual(
+        'Paris, FR | 18.5°C | light rain | Humidity: 72% | Wind: 4.2 m/s',
+        updated.Weather_Info__c,
+        'Account should hold the formatted summary'
+      );
+    }
   }
 }
