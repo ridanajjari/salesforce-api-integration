@@ -53,7 +53,7 @@ force-app/main/default/
 ## Deployment
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/salesforce-api-integration.git
+git clone https://github.com/ridanajjari/salesforce-api-integration.git
 cd salesforce-api-integration
 sf org login web --alias my-org
 
