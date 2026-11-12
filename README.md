@@ -1,16 +1,16 @@
 # Salesforce ↔ External API Integration
 
-Demonstrates how to connect Salesforce to an external REST API using a Named Credential and Apex HTTP callouts, with the API key kept in a protected custom setting instead of the code. Uses the OpenWeatherMap API to write current weather for each Account's billing city to a field on the Account.
+I built this project to show how I connect Salesforce to an external REST API with a Named Credential and Apex HTTP callouts. The API key is kept in a protected custom setting, not in the code. I use the OpenWeatherMap API: for each Account, the current weather in its billing city is written to a field on the Account.
 
 ---
 
-## Business Problem
+## Why I built it
 
-Consultants are often asked to integrate Salesforce with external systems — ERPs, weather APIs, payment gateways, shipping providers. This project shows the full integration pattern: authenticated callout, JSON parsing, error handling, and writing the result back to a Salesforce record.
+Clients often ask consultants to integrate Salesforce with external systems: ERPs, weather APIs, payment gateways, shipping providers. This project covers the full pattern: an authenticated callout, JSON parsing, error handling, and writing the result back to a Salesforce record.
 
 ---
 
-## How It Works
+## How it works
 
 ```
 Entry points
@@ -38,25 +38,26 @@ WeatherService.callWeatherApi(city)
 One bulk update of Account.Weather_Info__c (allOrNone = false: failed rows are logged, successful rows are kept)
 ```
 
-### Where the API key lives
+### Where I keep the API key
 
-OpenWeatherMap only accepts the key as the `appid` query parameter. Salesforce does not let an
-External Credential put a secret into the callout URL. In a Developer Edition org at API 68.0, a
-`{!$Credential.OpenWeatherMap.apiKey}` merge field in the Apex endpoint was not substituted, and
-the platform rejects `$Credential` in a Named Credential URL. So the key is stored in the
-**protected hierarchy custom setting** `OpenWeatherMap_Settings__c.API_Key__c`. You enter it in
-Setup, and it is never in the code, a method parameter or this repository. `WeatherService` reads
-it at callout time and never logs it or the request URL. (The platform's own callout debug-log events can still show the full URL, so treat debug logs as sensitive.)
+OpenWeatherMap only accepts the key as the `appid` query parameter, and Salesforce does not let an
+External Credential put a secret into the callout URL. I tried it in a Developer Edition org at
+API 68.0: a `{!$Credential.OpenWeatherMap.apiKey}` merge field in the Apex endpoint was not
+substituted, and the platform rejects `$Credential` in a Named Credential URL. So I store the key in
+the **protected hierarchy custom setting** `OpenWeatherMap_Settings__c.API_Key__c`. You enter it in
+Setup. It is never in the code, in a method parameter or in this repository. `WeatherService` reads
+it at callout time and never logs it or the request URL. The platform's own callout debug-log
+events can still show the full URL, so treat debug logs as sensitive.
 
 The callout still goes through the `OpenWeatherMap` Named Credential, so the host is set in Setup
-and no Remote Site Setting is needed. A Named Credential must link an External Credential, so the
-`OpenWeatherMap` External Credential (Custom protocol) has an empty `OpenWeatherMapKey` principal.
-It holds no secret, but users need access to that principal to make the callout, and the
-permission set grants it.
+and no Remote Site Setting is needed. A Named Credential must link an External Credential, so I
+added the `OpenWeatherMap` External Credential (Custom protocol) with an empty `OpenWeatherMapKey`
+principal. It holds no secret, but users need access to that principal to make the callout, and
+the permission set grants it.
 
 ---
 
-## Sample Output on Account
+## Sample output on Account
 
 `Account.Weather_Info__c` (Text 255) is updated to:
 
@@ -66,7 +67,7 @@ Paris, FR | 18.5°C | light rain | Humidity: 72% | Wind: 4.2 m/s
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 force-app/main/default/
@@ -93,7 +94,7 @@ force-app/main/default/
 
 ## Setup
 
-Requires an org that supports Apex (for example a Developer Edition org).
+You need an org that supports Apex (for example a Developer Edition org).
 
 ```bash
 git clone https://github.com/ridanajjari/salesforce-api-integration.git
@@ -130,49 +131,52 @@ Or add the **Refresh Account Weather** action to a Flow and pass it Account Ids.
 
 ## Testing
 
-- ✅ Deployed to a Developer Edition org at API 68.0 (2026-11-12); 18/18 Apex test methods passing
-  (`WeatherServiceTest` 13, `WeatherSyncTest` 5; the runner reports 19 because it also counts the
-  `@TestSetup` method). Coverage as measured: WeatherService 97%, WeatherSyncQueueable 96%,
-  WeatherSyncAction 100%.
-- ✅ The tests cover:
-  - the request: GET, the `callout:OpenWeatherMap` endpoint, the URL-encoded city, `appid`
-  - the key read from the custom setting, and a missing key (no callout made)
-  - parsing, and missing optional blocks
-  - 404, and non-200 status without leaking the body
-  - callout timeout
-  - malformed, empty and incomplete JSON, and a blank city
-  - the synchronous Account update
-  - Queueable end-to-end, partial failure, chunking + chaining
-  - the invocable action
+I deployed to a Developer Edition org at API 68.0 on 12 Nov 2026. 18 of 18 Apex test methods pass
+(`WeatherServiceTest` 13, `WeatherSyncTest` 5). The runner reports 19 because it also counts the
+`@TestSetup` method. Coverage as measured: WeatherService 97%, WeatherSyncQueueable 96%,
+WeatherSyncAction 100%.
 
-  Tests that touch Account run as a Salesforce Platform user with only the
-  `Weather_Integration_User` permission set.
+The tests cover:
 
-- ✅ Live callout check (same org): with a dummy key in the custom setting,
-  `WeatherService.callWeatherApi('Paris')` reached OpenWeatherMap through the Named Credential
-  and got HTTP 401, surfaced as `Weather API returned HTTP 401`. Without the permission set the
-  callout failed with "couldn't access the credential(s)". The dummy key and the temporary
-  assignment were removed afterwards. A real key was not used.
-- ✅ Offline checks passing: `npm run lint`, `npm run prettier:verify`,
-  `npx prettier --check "force-app/**/*.{cls,trigger}"` (Apex parses), XML well-formed.
+- the request: GET, the `callout:OpenWeatherMap` endpoint, the URL-encoded city, `appid`
+- the key read from the custom setting, and a missing key (no callout made)
+- parsing, and missing optional blocks
+- 404, and non-200 status without leaking the body
+- callout timeout
+- malformed, empty and incomplete JSON, and a blank city
+- the synchronous Account update
+- Queueable end-to-end, partial failure, chunking + chaining
+- the invocable action
+
+Tests that touch Account run as a Salesforce Platform user with only the
+`Weather_Integration_User` permission set.
+
+I also checked a live callout in the same org. With a dummy key in the custom setting,
+`WeatherService.callWeatherApi('Paris')` reached OpenWeatherMap through the Named Credential and
+got HTTP 401, surfaced as `Weather API returned HTTP 401`. Without the permission set the callout
+failed with "couldn't access the credential(s)". I removed the dummy key and the temporary
+assignment afterwards. I did not use a real key.
+
+Offline checks that pass: `npm run lint`, `npm run prettier:verify`,
+`npx prettier --check "force-app/**/*.{cls,trigger}"` (Apex parses), and the XML is well-formed.
 
 ---
 
-## Key Salesforce Concepts Demonstrated
+## Salesforce concepts used
 
-- **Named Credential + protected custom setting** — endpoint managed in Setup, API key kept out of code and the repo; callout access granted through a permission set
-- **Queueable with `Database.AllowsCallouts`** — callouts chunked under the per-transaction limit, chained jobs, one bulk DML after all callouts
-- **Partial-failure handling** — `Database.update(records, false, AccessLevel.USER_MODE)`
-- **`@InvocableMethod`** — Flow entry point that enqueues the async job
-- **Typed JSON parsing** — `JSON.deserialize` into wrapper classes with null guards
-- **`HttpCalloutMock`** — request assertions, simulated timeout, malformed bodies, 404 for selected cities
-- **Security** — `with sharing`, `WITH USER_MODE` queries, user-mode DML, no response bodies in exception messages
+- **Named Credential + protected custom setting**: endpoint managed in Setup, API key kept out of code and the repo; callout access granted through a permission set
+- **Queueable with `Database.AllowsCallouts`**: callouts chunked under the per-transaction limit, chained jobs, one bulk DML after all callouts
+- **Partial-failure handling**: `Database.update(records, false, AccessLevel.USER_MODE)`
+- **`@InvocableMethod`**: Flow entry point that enqueues the async job
+- **Typed JSON parsing**: `JSON.deserialize` into wrapper classes with null guards
+- **`HttpCalloutMock`**: request assertions, simulated timeout, malformed bodies, 404 for selected cities
+- **Security**: `with sharing`, `WITH USER_MODE` queries, user-mode DML, no response bodies in exception messages
 
 ---
 
 ## Author
 
-**Rida Najjari** — Salesforce Consultant, Developer & Administrator
+**Rida Najjari**, Salesforce Consultant, Developer & Administrator
 
 4x Salesforce Certified: Platform Administrator · Platform App Builder · Platform Developer I · Associate
 
