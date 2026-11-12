@@ -5,6 +5,10 @@ private class WeatherSyncTest {
   @TestSetup
   static void createUser() {
     WeatherTestAccess.createIntegrationUser();
+    // Separate runAs block avoids mixed setup / non-setup DML.
+    System.runAs(new User(Id = UserInfo.getUserId())) {
+      WeatherTestAccess.configureApiKey(WeatherTestAccess.TEST_API_KEY);
+    }
   }
 
   @IsTest

@@ -2,9 +2,14 @@
 private class WeatherServiceTest {
   private static final String RAW_BODY_MARKER = 'RAW_BODY_MARKER';
 
+  private static void useTestKey() {
+    WeatherService.apiKeyOverride = WeatherTestAccess.TEST_API_KEY;
+  }
+
   @IsTest
-  static void requestUsesNamedCredentialAndMergeField() {
+  static void requestUsesNamedCredentialAndApiKey() {
     WeatherCalloutMock mock = new WeatherCalloutMock();
+    useTestKey();
     Test.setMock(HttpCalloutMock.class, mock);
 
     WeatherService.callWeatherApi('San Francisco');
@@ -23,13 +28,47 @@ private class WeatherServiceTest {
     );
     Assert.isTrue(endpoint.contains('units=metric'), 'Metric units expected');
     Assert.isTrue(
-      endpoint.contains('appid={!$Credential.OpenWeatherMap.apiKey}'),
-      'Key must come from the External Credential merge field, not from Apex'
+      endpoint.endsWith('&appid=' + WeatherTestAccess.TEST_API_KEY),
+      'Key must be sent as the appid query parameter'
     );
   }
 
   @IsTest
+  static void apiKeyIsReadFromCustomSetting() {
+    WeatherTestAccess.configureApiKey('ORG_DEFAULT_KEY');
+    WeatherCalloutMock mock = new WeatherCalloutMock();
+    Test.setMock(HttpCalloutMock.class, mock);
+
+    Test.startTest();
+    WeatherService.callWeatherApi('Paris');
+    Test.stopTest();
+
+    Assert.isTrue(
+      mock.requests[0].getEndpoint().endsWith('&appid=ORG_DEFAULT_KEY'),
+      'Key should come from OpenWeatherMap_Settings__c'
+    );
+  }
+
+  @IsTest
+  static void missingApiKeyThrowsWithoutCallout() {
+    WeatherCalloutMock mock = new WeatherCalloutMock();
+    Test.setMock(HttpCalloutMock.class, mock);
+
+    try {
+      WeatherService.callWeatherApi('Paris');
+      Assert.fail('Expected WeatherServiceException was not thrown');
+    } catch (WeatherService.WeatherServiceException e) {
+      Assert.isTrue(
+        e.getMessage().contains('API key is not configured'),
+        'Should explain the missing configuration'
+      );
+      Assert.areEqual(0, mock.requests.size(), 'No callout without a key');
+    }
+  }
+
+  @IsTest
   static void successfulResponseIsParsed() {
+    useTestKey();
     Test.setMock(HttpCalloutMock.class, new WeatherCalloutMock());
 
     WeatherService.WeatherResult result = WeatherService.callWeatherApi(
@@ -54,6 +93,7 @@ private class WeatherServiceTest {
 
   @IsTest
   static void optionalBlocksMayBeMissing() {
+    useTestKey();
     Test.setMock(
       HttpCalloutMock.class,
       new WeatherCalloutMock(
@@ -78,6 +118,7 @@ private class WeatherServiceTest {
 
   @IsTest
   static void cityNotFoundThrows() {
+    useTestKey();
     Test.setMock(
       HttpCalloutMock.class,
       new WeatherCalloutMock(404, '{"message":"' + RAW_BODY_MARKER + '"}')
@@ -97,6 +138,7 @@ private class WeatherServiceTest {
 
   @IsTest
   static void non200StatusThrowsWithoutBody() {
+    useTestKey();
     Test.setMock(
       HttpCalloutMock.class,
       new WeatherCalloutMock(401, '{"message":"' + RAW_BODY_MARKER + '"}')
@@ -121,6 +163,7 @@ private class WeatherServiceTest {
   static void calloutTimeoutIsWrapped() {
     WeatherCalloutMock mock = new WeatherCalloutMock();
     mock.throwTimeout = true;
+    useTestKey();
     Test.setMock(HttpCalloutMock.class, mock);
 
     try {
@@ -141,6 +184,7 @@ private class WeatherServiceTest {
 
   @IsTest
   static void malformedBodyThrowsWithoutBody() {
+    useTestKey();
     Test.setMock(
       HttpCalloutMock.class,
       new WeatherCalloutMock(200, '<html>' + RAW_BODY_MARKER)
@@ -164,6 +208,7 @@ private class WeatherServiceTest {
 
   @IsTest
   static void missingRequiredFieldsThrows() {
+    useTestKey();
     Test.setMock(
       HttpCalloutMock.class,
       new WeatherCalloutMock(200, '{"name":"Paris","weather":[]}')
@@ -182,6 +227,7 @@ private class WeatherServiceTest {
 
   @IsTest
   static void emptyBodyThrows() {
+    useTestKey();
     Test.setMock(HttpCalloutMock.class, new WeatherCalloutMock(200, ''));
 
     try {
@@ -198,6 +244,7 @@ private class WeatherServiceTest {
   @IsTest
   static void blankCityThrowsWithoutCallout() {
     WeatherCalloutMock mock = new WeatherCalloutMock();
+    useTestKey();
     Test.setMock(HttpCalloutMock.class, mock);
 
     try {
@@ -212,6 +259,7 @@ private class WeatherServiceTest {
   static void fetchAndSaveUpdatesAccount() {
     User integrationUser = WeatherTestAccess.createIntegrationUser();
     System.runAs(integrationUser) {
+      useTestKey();
       Test.setMock(HttpCalloutMock.class, new WeatherCalloutMock());
 
       Account acc = new Account(Name = 'Acme France');

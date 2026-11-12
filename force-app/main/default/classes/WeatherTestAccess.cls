@@ -7,6 +7,18 @@
 @IsTest
 public class WeatherTestAccess {
   private static final String EMAIL = 'weather.integration.test@example.com';
+  public static final String TEST_API_KEY = 'TEST_KEY_123';
+
+  /**
+   * Stores a fake key as the org default of the protected custom setting,
+   * the same place an admin enters the real key.
+   */
+  public static void configureApiKey(String key) {
+    insert new OpenWeatherMap_Settings__c(
+      SetupOwnerId = UserInfo.getOrganizationId(),
+      API_Key__c = key
+    );
+  }
 
   public static User createIntegrationUser() {
     // Any Salesforce Platform profile that can edit Accounts (profile names are localized).
