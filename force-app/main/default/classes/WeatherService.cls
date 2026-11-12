@@ -2,20 +2,26 @@
  * Fetches current weather data from OpenWeatherMap and stores it
  * on the Account record as a custom text field (Weather_Info__c).
  *
- * Uses Named Credentials so the API key is never hardcoded in Apex.
+ * API key handling:
+ *   The key is stored in the OpenWeatherMap External Credential (named
+ *   principal "OpenWeatherMapKey", authentication parameter "apiKey") and is
+ *   entered in Setup, never in code or source control. OpenWeatherMap expects
+ *   the key as the "appid" query parameter, so the request URL references it
+ *   through the merge field {!$Credential.OpenWeatherMap.apiKey}; the platform
+ *   substitutes the value when the callout is sent via the OpenWeatherMap
+ *   Named Credential. Apex never sees the key.
  *
  * Integration pattern:
  *   1. Caller provides Account Id + city name
  *   2. Service calls OpenWeatherMap REST API via Named Credential
  *   3. Response is parsed and written back to Account.Weather_Info__c
  *   4. Any HTTP or API error is surfaced as a typed exception
- *
- * Setup:
- *   - Create Named Credential "OpenWeatherMap" pointing to https://api.openweathermap.org
- *   - Store your API key in a Custom Setting (WeatherApiConfig__c.Api_Key__c)
- *   - Add Account.Weather_Info__c (Text 255) custom field
  */
 public with sharing class WeatherService {
+
+    // Resolved by the platform at callout time; the key itself is never in Apex.
+    @TestVisible
+    private static final String API_KEY_MERGE_FIELD = '{!$Credential.OpenWeatherMap.apiKey}';
 
     public class WeatherServiceException extends Exception {}
 
@@ -32,19 +38,18 @@ public with sharing class WeatherService {
      * Fetches weather for a city and updates Account.Weather_Info__c.
      * @param accountId  The Account to update
      * @param city       City name to query (e.g. "Paris")
-     * @param apiKey     OpenWeatherMap API key (passed in, never stored in code)
      */
-    public static WeatherResult fetchAndSaveWeather(Id accountId, String city, String apiKey) {
-        WeatherResult result = callWeatherApi(city, apiKey);
+    public static WeatherResult fetchAndSaveWeather(Id accountId, String city) {
+        WeatherResult result = callWeatherApi(city);
         updateAccount(accountId, result);
         return result;
     }
 
-    public static WeatherResult callWeatherApi(String city, String apiKey) {
+    public static WeatherResult callWeatherApi(String city) {
         String endpoint = 'callout:OpenWeatherMap/data/2.5/weather'
             + '?q='    + EncodingUtil.urlEncode(city, 'UTF-8')
-            + '&appid=' + apiKey
-            + '&units=metric';
+            + '&units=metric'
+            + '&appid=' + API_KEY_MERGE_FIELD;
 
         HttpRequest req = new HttpRequest();
         req.setEndpoint(endpoint);

@@ -13,13 +13,13 @@ Consultants are often asked to integrate Salesforce with external systems — ER
 ## How It Works
 
 ```
-User triggers WeatherService.fetchAndSaveWeather(accountId, city, apiKey)
+User triggers WeatherService.fetchAndSaveWeather(accountId, city)
         │
         ▼
 Apex HttpRequest → Named Credential (OpenWeatherMap)
-        │           (API key never hardcoded in Apex)
+        │           → External Credential (OpenWeatherMap, named principal holds the key)
         ▼
-GET https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric
+GET https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&appid={key from External Credential}
         │
         ├─ 200 OK  → parse JSON → update Account.Weather_Info__c
         ├─ 404     → throw WeatherServiceException("City not found")
@@ -63,14 +63,16 @@ sf org login web --alias my-org
 # 2. Deploy
 sf project deploy start --target-org my-org
 
-# 3. Add your OpenWeatherMap API key to the Named Credential
-#    Setup → Named Credentials → OpenWeatherMap → Edit → add ?appid= to URL or use URL parameter
+# 3. Add your OpenWeatherMap API key to the External Credential (never commit it)
+#    Setup → Named Credentials → External Credentials → OpenWeatherMap
+#    → Principals → OpenWeatherMapKey → Edit → Authentication Parameters
+#    → Add: Name = apiKey, Value = <your key>
 
 # 4. Run tests
 sf apex run test --target-org my-org --test-level RunLocalTests --wait 10
 
 # 5. Test in Anonymous Apex
-WeatherService.fetchAndSaveWeather('YOUR_ACCOUNT_ID', 'Paris', 'YOUR_API_KEY');
+WeatherService.fetchAndSaveWeather('YOUR_ACCOUNT_ID', 'Paris');
 ```
 
 ---
@@ -88,7 +90,7 @@ WeatherService.fetchAndSaveWeather('YOUR_ACCOUNT_ID', 'Paris', 'YOUR_API_KEY');
 
 ## Key Salesforce Concepts Demonstrated
 
-- **Named Credentials** — API key kept out of code, managed in Setup
+- **Named + External Credentials** — API key kept out of code and the repo, entered in Setup on a named principal
 - **`HttpCalloutMock`** — proper unit testing of callouts without hitting the real API
 - **`JSON.deserializeUntyped()`** — flexible JSON parsing for external API responses
 - **Typed custom exceptions** (`WeatherServiceException`) — clean error surfacing
