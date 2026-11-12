@@ -14,88 +14,168 @@
  * Integration pattern:
  *   1. Caller provides Account Id + city name
  *   2. Service calls OpenWeatherMap REST API via Named Credential
- *   3. Response is parsed and written back to Account.Weather_Info__c
- *   4. Any HTTP or API error is surfaced as a typed exception
+ *   3. Response is deserialized into a typed wrapper and validated
+ *   4. Any callout, HTTP or parsing error is surfaced as WeatherServiceException.
+ *      Exception messages never include the raw response body.
  */
 public with sharing class WeatherService {
+    @TestVisible
+    private static final String ENDPOINT_BASE = 'callout:OpenWeatherMap/data/2.5/weather';
 
     // Resolved by the platform at callout time; the key itself is never in Apex.
     @TestVisible
     private static final String API_KEY_MERGE_FIELD = '{!$Credential.OpenWeatherMap.apiKey}';
 
-    public class WeatherServiceException extends Exception {}
+    @TestVisible
+    private static final Integer TIMEOUT_MS = 10000;
+
+    private static final Integer FIELD_LENGTH = 255;
+
+    public class WeatherServiceException extends Exception {
+    }
 
     public class WeatherResult {
-        public String city        { get; set; }
-        public String country     { get; set; }
-        public Decimal tempCelsius{ get; set; }
+        public String city { get; set; }
+        public String country { get; set; }
+        public Decimal tempCelsius { get; set; }
         public String description { get; set; }
-        public Integer humidity   { get; set; }
-        public Decimal windSpeed  { get; set; }
+        public Integer humidity { get; set; }
+        public Decimal windSpeed { get; set; }
+    }
+
+    // Typed shape of the parts of the OpenWeatherMap response we use.
+    // Unknown JSON properties are ignored by JSON.deserialize. Public so the
+    // JSON parser can instantiate them.
+    public class OwmResponse {
+        public String name;
+        public OwmSys sys;
+        public OwmMain main;
+        public List<OwmWeather> weather;
+        public OwmWind wind;
+    }
+
+    public class OwmSys {
+        public String country;
+    }
+
+    public class OwmMain {
+        public Decimal temp;
+        public Integer humidity;
+    }
+
+    public class OwmWeather {
+        public String description;
+    }
+
+    public class OwmWind {
+        public Decimal speed;
     }
 
     /**
-     * Fetches weather for a city and updates Account.Weather_Info__c.
+     * Fetches weather for a city and updates Account.Weather_Info__c (user mode).
+     * Synchronous: one callout. For many accounts use WeatherSyncQueueable.
      * @param accountId  The Account to update
      * @param city       City name to query (e.g. "Paris")
      */
     public static WeatherResult fetchAndSaveWeather(Id accountId, String city) {
         WeatherResult result = callWeatherApi(city);
-        updateAccount(accountId, result);
+        Account acc = new Account(Id = accountId, Weather_Info__c = formatSummary(result));
+        update as user acc;
         return result;
     }
 
     public static WeatherResult callWeatherApi(String city) {
-        String endpoint = 'callout:OpenWeatherMap/data/2.5/weather'
-            + '?q='    + EncodingUtil.urlEncode(city, 'UTF-8')
-            + '&units=metric'
-            + '&appid=' + API_KEY_MERGE_FIELD;
+        if (String.isBlank(city)) {
+            throw new WeatherServiceException('City is required');
+        }
 
         HttpRequest req = new HttpRequest();
-        req.setEndpoint(endpoint);
+        req.setEndpoint(buildEndpoint(city));
         req.setMethod('GET');
-        req.setTimeout(10000);
+        req.setTimeout(TIMEOUT_MS);
 
-        HttpResponse res = new Http().send(req);
+        HttpResponse res;
+        try {
+            res = new Http().send(req);
+        } catch (CalloutException e) {
+            // Timeouts and connection failures land here.
+            throw new WeatherServiceException('Weather API callout failed for city: ' + city, e);
+        }
 
-        if (res.getStatusCode() == 404) {
+        Integer status = res.getStatusCode();
+        if (status == 404) {
             throw new WeatherServiceException('City not found: ' + city);
         }
-        if (res.getStatusCode() != 200) {
-            throw new WeatherServiceException(
-                'Weather API error ' + res.getStatusCode() + ': ' + res.getBody()
-            );
+        if (status != 200) {
+            throw new WeatherServiceException('Weather API returned HTTP ' + status);
         }
 
         return parseResponse(res.getBody());
     }
 
-    private static WeatherResult parseResponse(String body) {
-        Map<String, Object> root = (Map<String, Object>) JSON.deserializeUntyped(body);
-
-        Map<String, Object> mainBlock = (Map<String, Object>) root.get('main');
-        Map<String, Object> windBlock = (Map<String, Object>) root.get('wind');
-        Map<String, Object> sysBlock  = (Map<String, Object>) root.get('sys');
-        List<Object>        weatherList = (List<Object>) root.get('weather');
-        Map<String, Object> weatherItem = (Map<String, Object>) weatherList[0];
-
-        WeatherResult result  = new WeatherResult();
-        result.city           = (String)  root.get('name');
-        result.country        = (String)  sysBlock.get('country');
-        result.tempCelsius    = Decimal.valueOf(String.valueOf(mainBlock.get('temp')));
-        result.description    = (String)  weatherItem.get('description');
-        result.humidity       = Integer.valueOf(String.valueOf(mainBlock.get('humidity')));
-        result.windSpeed      = Decimal.valueOf(String.valueOf(windBlock.get('speed')));
-        return result;
+    /**
+     * Builds the one-line summary stored on the Account, truncated to the field length.
+     */
+    public static String formatSummary(WeatherResult weather) {
+        String info =
+            weather.city +
+            (String.isBlank(weather.country) ? '' : ', ' + weather.country) +
+            ' | ' +
+            weather.tempCelsius +
+            '°C' +
+            ' | ' +
+            weather.description +
+            (weather.humidity == null ? '' : ' | Humidity: ' + weather.humidity + '%') +
+            (weather.windSpeed == null ? '' : ' | Wind: ' + weather.windSpeed + ' m/s');
+        return info.left(FIELD_LENGTH);
     }
 
-    private static void updateAccount(Id accountId, WeatherResult weather) {
-        String info = weather.city + ', ' + weather.country
-            + ' | ' + weather.tempCelsius + '°C'
-            + ' | ' + weather.description
-            + ' | Humidity: ' + weather.humidity + '%'
-            + ' | Wind: ' + weather.windSpeed + ' m/s';
+    @TestVisible
+    private static String buildEndpoint(String city) {
+        return ENDPOINT_BASE +
+            '?q=' +
+            EncodingUtil.urlEncode(city, 'UTF-8') +
+            '&units=metric' +
+            '&appid=' +
+            API_KEY_MERGE_FIELD;
+    }
 
-        update new Account(Id = accountId, Weather_Info__c = info);
+    @TestVisible
+    private static WeatherResult parseResponse(String body) {
+        if (String.isBlank(body)) {
+            throw new WeatherServiceException('Weather API returned an empty response');
+        }
+
+        OwmResponse parsed;
+        try {
+            parsed = (OwmResponse) JSON.deserialize(body, OwmResponse.class);
+        } catch (JSONException e) {
+            throw new WeatherServiceException('Weather API returned a malformed response');
+        } catch (TypeException e) {
+            throw new WeatherServiceException('Weather API returned a malformed response');
+        }
+
+        // Required: city name, temperature and at least one weather description.
+        if (
+            parsed == null ||
+            String.isBlank(parsed.name) ||
+            parsed.main == null ||
+            parsed.main.temp == null ||
+            parsed.weather == null ||
+            parsed.weather.isEmpty() ||
+            parsed.weather[0] == null ||
+            String.isBlank(parsed.weather[0].description)
+        ) {
+            throw new WeatherServiceException('Weather API response is missing required fields');
+        }
+
+        WeatherResult result = new WeatherResult();
+        result.city = parsed.name;
+        result.country = parsed.sys == null ? null : parsed.sys.country;
+        result.tempCelsius = parsed.main.temp;
+        result.description = parsed.weather[0].description;
+        result.humidity = parsed.main.humidity;
+        result.windSpeed = parsed.wind == null ? null : parsed.wind.speed;
+        return result;
     }
 }
