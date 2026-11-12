@@ -32,7 +32,7 @@ private class WeatherServiceTest {
     static void testSuccessfulWeatherFetch() {
         Test.setMock(HttpCalloutMock.class, new WeatherMock(200, MOCK_SUCCESS_BODY));
 
-        WeatherService.WeatherResult result = WeatherService.callWeatherApi('Paris', 'FAKE_KEY');
+        WeatherService.WeatherResult result = WeatherService.callWeatherApi('Paris');
 
         Assert.areEqual('Paris',      result.city,        'City should be Paris');
         Assert.areEqual('FR',         result.country,     'Country should be FR');
@@ -47,7 +47,7 @@ private class WeatherServiceTest {
         Test.setMock(HttpCalloutMock.class, new WeatherMock(404, '{"message":"city not found"}'));
 
         try {
-            WeatherService.callWeatherApi('Atlantis', 'FAKE_KEY');
+            WeatherService.callWeatherApi('Atlantis');
             Assert.fail('Expected WeatherServiceException was not thrown');
         } catch (WeatherService.WeatherServiceException e) {
             Assert.isTrue(e.getMessage().contains('City not found'), 'Exception message should mention the city');
@@ -59,7 +59,7 @@ private class WeatherServiceTest {
         Test.setMock(HttpCalloutMock.class, new WeatherMock(401, '{"message":"Invalid API key"}'));
 
         try {
-            WeatherService.callWeatherApi('Paris', 'BAD_KEY');
+            WeatherService.callWeatherApi('Paris');
             Assert.fail('Expected WeatherServiceException was not thrown');
         } catch (WeatherService.WeatherServiceException e) {
             Assert.isTrue(e.getMessage().contains('401'), 'Exception should include the HTTP status code');
@@ -74,7 +74,7 @@ private class WeatherServiceTest {
         insert acc;
 
         Test.startTest();
-        WeatherService.fetchAndSaveWeather(acc.Id, 'Paris', 'FAKE_KEY');
+        WeatherService.fetchAndSaveWeather(acc.Id, 'Paris');
         Test.stopTest();
 
         Account updated = [SELECT Weather_Info__c FROM Account WHERE Id = :acc.Id];
