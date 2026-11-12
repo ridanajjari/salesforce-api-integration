@@ -31,6 +31,7 @@ GET https://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&appid=
 ## Sample Output on Account
 
 `Account.Weather_Info__c` is updated to:
+
 ```
 Paris, FR | 18.5°C | light rain | Humidity: 72% | Wind: 4.2 m/s
 ```
@@ -79,12 +80,12 @@ WeatherService.fetchAndSaveWeather('YOUR_ACCOUNT_ID', 'Paris');
 
 ## Test Coverage
 
-| Test Method | Scenario |
-|-------------|----------|
-| `testSuccessfulWeatherFetch` | 200 response → all fields parsed correctly |
-| `testCityNotFoundThrowsException` | 404 → typed exception with city name |
-| `testApiErrorThrowsException` | 401 → typed exception with status code |
-| `testFetchAndSaveUpdatesAccount` | End-to-end: API → Account field updated |
+| Test Method                       | Scenario                                   |
+| --------------------------------- | ------------------------------------------ |
+| `testSuccessfulWeatherFetch`      | 200 response → all fields parsed correctly |
+| `testCityNotFoundThrowsException` | 404 → typed exception with city name       |
+| `testApiErrorThrowsException`     | 401 → typed exception with status code     |
+| `testFetchAndSaveUpdatesAccount`  | End-to-end: API → Account field updated    |
 
 ---
 

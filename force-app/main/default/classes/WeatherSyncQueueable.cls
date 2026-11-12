@@ -13,85 +13,102 @@
  *   user's record access and FLS apply.
  */
 public with sharing class WeatherSyncQueueable implements Queueable, Database.AllowsCallouts {
-    @TestVisible
-    private static final Integer MAX_CALLOUTS_PER_JOB = 50;
+  @TestVisible
+  private static final Integer MAX_CALLOUTS_PER_JOB = 50;
 
-    // Set instead of enqueuing when chaining from a test (chained jobs cannot be enqueued in tests).
-    @TestVisible
-    private static List<Id> chainedIdsInTest;
+  // Set instead of enqueuing when chaining from a test (chained jobs cannot be enqueued in tests).
+  @TestVisible
+  private static List<Id> chainedIdsInTest;
 
-    private final List<Id> accountIds;
+  private final List<Id> accountIds;
 
-    @TestVisible
-    private Integer updatedCount = 0;
-    @TestVisible
-    private Integer failedCount = 0;
+  @TestVisible
+  private Integer updatedCount = 0;
+  @TestVisible
+  private Integer failedCount = 0;
 
-    public WeatherSyncQueueable(List<Id> accountIds) {
-        // De-duplicate and drop nulls, keeping the original order.
-        Set<Id> seen = new Set<Id>();
-        this.accountIds = new List<Id>();
-        if (accountIds != null) {
-            for (Id accountId : accountIds) {
-                if (accountId != null && seen.add(accountId)) {
-                    this.accountIds.add(accountId);
-                }
-            }
+  public WeatherSyncQueueable(List<Id> accountIds) {
+    // De-duplicate and drop nulls, keeping the original order.
+    Set<Id> seen = new Set<Id>();
+    this.accountIds = new List<Id>();
+    if (accountIds != null) {
+      for (Id accountId : accountIds) {
+        if (accountId != null && seen.add(accountId)) {
+          this.accountIds.add(accountId);
         }
+      }
+    }
+  }
+
+  public Boolean hasWork() {
+    return !accountIds.isEmpty();
+  }
+
+  public void execute(QueueableContext context) {
+    List<Id> currentIds = new List<Id>();
+    List<Id> remainingIds = new List<Id>();
+    for (Id accountId : accountIds) {
+      if (currentIds.size() < MAX_CALLOUTS_PER_JOB) {
+        currentIds.add(accountId);
+      } else {
+        remainingIds.add(accountId);
+      }
     }
 
-    public Boolean hasWork() {
-        return !accountIds.isEmpty();
+    List<Account> toUpdate = new List<Account>();
+    for (Account acc : [
+      SELECT Id, BillingCity
+      FROM Account
+      WHERE Id IN :currentIds AND BillingCity != NULL
+      WITH USER_MODE
+    ]) {
+      try {
+        WeatherService.WeatherResult result = WeatherService.callWeatherApi(
+          acc.BillingCity
+        );
+        toUpdate.add(
+          new Account(
+            Id = acc.Id,
+            Weather_Info__c = WeatherService.formatSummary(result)
+          )
+        );
+      } catch (WeatherService.WeatherServiceException e) {
+        failedCount++;
+        System.debug(
+          LoggingLevel.WARN,
+          'Weather refresh failed for ' + acc.Id + ': ' + e.getMessage()
+        );
+      }
     }
 
-    public void execute(QueueableContext context) {
-        List<Id> currentIds = new List<Id>();
-        List<Id> remainingIds = new List<Id>();
-        for (Id accountId : accountIds) {
-            if (currentIds.size() < MAX_CALLOUTS_PER_JOB) {
-                currentIds.add(accountId);
-            } else {
-                remainingIds.add(accountId);
-            }
+    if (!toUpdate.isEmpty()) {
+      List<Database.SaveResult> results = Database.update(
+        toUpdate,
+        false,
+        AccessLevel.USER_MODE
+      );
+      for (Integer i = 0; i < results.size(); i++) {
+        if (results[i].isSuccess()) {
+          updatedCount++;
+        } else {
+          failedCount++;
+          System.debug(
+            LoggingLevel.WARN,
+            'Weather update failed for ' +
+              toUpdate[i].Id +
+              ': ' +
+              results[i].getErrors()[0].getMessage()
+          );
         }
-
-        List<Account> toUpdate = new List<Account>();
-        for (Account acc : [
-            SELECT Id, BillingCity
-            FROM Account
-            WHERE Id IN :currentIds AND BillingCity != NULL
-            WITH USER_MODE
-        ]) {
-            try {
-                WeatherService.WeatherResult result = WeatherService.callWeatherApi(acc.BillingCity);
-                toUpdate.add(new Account(Id = acc.Id, Weather_Info__c = WeatherService.formatSummary(result)));
-            } catch (WeatherService.WeatherServiceException e) {
-                failedCount++;
-                System.debug(LoggingLevel.WARN, 'Weather refresh failed for ' + acc.Id + ': ' + e.getMessage());
-            }
-        }
-
-        if (!toUpdate.isEmpty()) {
-            List<Database.SaveResult> results = Database.update(toUpdate, false, AccessLevel.USER_MODE);
-            for (Integer i = 0; i < results.size(); i++) {
-                if (results[i].isSuccess()) {
-                    updatedCount++;
-                } else {
-                    failedCount++;
-                    System.debug(
-                        LoggingLevel.WARN,
-                        'Weather update failed for ' + toUpdate[i].Id + ': ' + results[i].getErrors()[0].getMessage()
-                    );
-                }
-            }
-        }
-
-        if (!remainingIds.isEmpty()) {
-            if (Test.isRunningTest()) {
-                chainedIdsInTest = remainingIds;
-            } else {
-                System.enqueueJob(new WeatherSyncQueueable(remainingIds));
-            }
-        }
+      }
     }
+
+    if (!remainingIds.isEmpty()) {
+      if (Test.isRunningTest()) {
+        chainedIdsInTest = remainingIds;
+      } else {
+        System.enqueueJob(new WeatherSyncQueueable(remainingIds));
+      }
+    }
+  }
 }

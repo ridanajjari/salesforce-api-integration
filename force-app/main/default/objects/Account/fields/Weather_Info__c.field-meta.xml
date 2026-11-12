@@ -1,9 +1,11 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Weather_Info__c</fullName>
-    <description>One-line summary of current weather for the account's city, written by WeatherService (OpenWeatherMap callout).</description>
+    <description
+  >One-line summary of current weather for the account's city, written by WeatherService (OpenWeatherMap callout).</description>
     <externalId>false</externalId>
-    <inlineHelpText>Set by the OpenWeatherMap integration. Example: Paris, FR | 18.5°C | light rain | Humidity: 72% | Wind: 4.2 m/s</inlineHelpText>
+    <inlineHelpText
+  >Set by the OpenWeatherMap integration. Example: Paris, FR | 18.5°C | light rain | Humidity: 72% | Wind: 4.2 m/s</inlineHelpText>
     <label>Weather Info</label>
     <length>255</length>
     <required>false</required>
